@@ -505,6 +505,10 @@ def demo():
         st.error("⚠️ Chưa có mô hình! Hãy huấn luyện trước.")
         return
 
+    st.write("### Hướng dẫn:")
+    st.write("1. Vẽ một chữ số từ 0 đến 9 vào khung bên dưới.")
+    st.write("2. Nhấn nút 'Dự đoán số' để xem kết quả.")
+
     if "key_value" not in st.session_state:
         st.session_state.key_value = str(random.randint(0, 1000000))  
 
@@ -538,9 +542,6 @@ def demo():
 
             st.subheader(f"🔢 Dự đoán: {prediction}")
             st.write(f"📊 Mức độ tin cậy: {max_confidence:.2%}")
-
-            prob_df = pd.DataFrame(confidence_scores.numpy(), columns=[str(i) for i in range(10)]).T
-            prob_df.columns = ["Mức độ tin cậy"]
         else:
             st.error("⚠️ Hãy vẽ một số trước khi bấm Dự đoán!")
 
