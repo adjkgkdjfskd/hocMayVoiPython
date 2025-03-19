@@ -15,6 +15,7 @@ from streamlit_drawable_canvas import st_canvas
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 import torch
+from datetime import datetime
 from torchvision import transforms
 from datetime import datetime
 from sklearn.svm import SVC
@@ -30,27 +31,17 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split 
 
-
-
+# Hàm khởi tạo MLflow
 def mlflow_input():
-    #st.title("🚀 MLflow DAGsHub Tracking với Streamlit")
-    DAGSHUB_USERNAME = "Snxtruc"  # Thay bằng username của bạn
+    DAGSHUB_USERNAME = "Snxtruc"
     DAGSHUB_REPO_NAME = "HocMayPython"
-    DAGSHUB_TOKEN = "ca4b78ae4dd9d511c1e0c333e3b709b2cd789a19"  # Thay bằng Access Token của bạn
+    DAGSHUB_TOKEN = "ca4b78ae4dd9d511c1e0c333e3b709b2cd789a19"
 
-    # Đặt URI MLflow để trỏ đến DagsHub
     mlflow.set_tracking_uri(f"https://dagshub.com/{DAGSHUB_USERNAME}/{DAGSHUB_REPO_NAME}.mlflow")
-
-    # Thiết lập authentication bằng Access Token
     os.environ["MLFLOW_TRACKING_USERNAME"] = DAGSHUB_USERNAME
     os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN
-
-    # Đặt thí nghiệm MLflow
-    mlflow.set_experiment("Neural Network")   
-
+    mlflow.set_experiment("Neural Network")
     st.session_state['mlflow_url'] = f"https://dagshub.com/{DAGSHUB_USERNAME}/{DAGSHUB_REPO_NAME}.mlflow"
-
-
 
 def format_time_relative(timestamp_ms):
     """Chuyển timestamp milliseconds thành thời gian dễ đọc."""
@@ -59,10 +50,9 @@ def format_time_relative(timestamp_ms):
     dt = datetime.fromtimestamp(timestamp_ms / 1000)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
+# Hàm hiển thị thông tin MLflow
 def display_mlflow_experiments():
-    """Hiển thị danh sách Runs trong MLflow."""
     st.title("📊 MLflow Experiment Viewer")
-
     mlflow_input()
 
     experiment_name = "Neural Network"
@@ -78,20 +68,17 @@ def display_mlflow_experiments():
     st.write(f"**Trạng thái:** {'Active' if selected_experiment.lifecycle_stage == 'active' else 'Deleted'}")
     st.write(f"**Vị trí lưu trữ:** {selected_experiment.artifact_location}")
 
-    # Lấy danh sách Runs
     runs = mlflow.search_runs(experiment_ids=[selected_experiment.experiment_id])
-
     if runs.empty:
         st.warning("⚠ Không có runs nào trong experiment này.")
         return
 
-    # Xử lý dữ liệu runs để hiển thị
     run_info = []
     for _, run in runs.iterrows():
         run_id = run["run_id"]
         run_data = mlflow.get_run(run_id)
         run_tags = run_data.data.tags
-        run_name = run_tags.get("mlflow.runName", f"Run {run_id[:8]}")  # Lấy tên từ tags nếu có
+        run_name = run_tags.get("mlflow.runName", f"Run {run_id[:8]}")
         created_time = format_time_relative(run_data.info.start_time)
         duration = (run_data.info.end_time - run_data.info.start_time) / 1000 if run_data.info.end_time else "Đang chạy"
         source = run_tags.get("mlflow.source.name", "Unknown")
@@ -104,25 +91,16 @@ def display_mlflow_experiments():
             "Source": source
         })
 
-    # Sắp xếp run theo thời gian chạy (mới nhất trước)
     run_info_df = pd.DataFrame(run_info)
     run_info_df = run_info_df.sort_values(by="Created", ascending=False)
-
-    # Hiển thị danh sách Runs trong bảng
     st.write("### 🏃‍♂️ Danh sách Runs:")
     st.dataframe(run_info_df, use_container_width=True)
 
-    # Chọn Run từ dropdown
     run_names = run_info_df["Run Name"].tolist()
     selected_run_name = st.selectbox("🔍 Chọn một Run để xem chi tiết:", run_names)
-
-    # Lấy Run ID tương ứng
     selected_run_id = run_info_df.loc[run_info_df["Run Name"] == selected_run_name, "Run ID"].values[0]
-
-    # Lấy thông tin Run
     selected_run = mlflow.get_run(selected_run_id)
 
-    # --- 📝 ĐỔI TÊN RUN ---
     st.write("### ✏️ Đổi tên Run")
     new_run_name = st.text_input("Nhập tên mới:", selected_run_name)
     if st.button("💾 Lưu tên mới"):
@@ -132,7 +110,6 @@ def display_mlflow_experiments():
         except Exception as e:
             st.error(f"❌ Lỗi khi đổi tên: {e}")
 
-    # --- 🗑️ XÓA RUN ---
     st.write("### ❌ Xóa Run")
     if st.button("🗑️ Xóa Run này"):
         try:
@@ -141,7 +118,6 @@ def display_mlflow_experiments():
         except Exception as e:
             st.error(f"❌ Lỗi khi xóa run: {e}")
 
-    # --- HIỂN THỊ CHI TIẾT RUN ---
     if selected_run:
         st.subheader(f"📌 Thông tin Run: {selected_run_name}")
         st.write(f"**Run ID:** {selected_run_id}")
@@ -155,7 +131,6 @@ def display_mlflow_experiments():
 
         st.write(f"**Thời gian chạy:** {start_time}")
 
-        # Hiển thị thông số đã log
         params = selected_run.data.params
         metrics = selected_run.data.metrics
 
@@ -167,7 +142,6 @@ def display_mlflow_experiments():
             st.write("### 📊 Metrics:")
             st.json(metrics)
 
-        # Hiển thị model artifact (nếu có)
         model_artifact_path = f"{st.session_state['mlflow_url']}/{selected_experiment.experiment_id}/{selected_run_id}/artifacts/model"
         st.write("### 📂 Model Artifact:")
         st.write(f"📥 [Tải mô hình]({model_artifact_path})")
@@ -175,43 +149,7 @@ def display_mlflow_experiments():
     else:
         st.warning("⚠ Không tìm thấy thông tin cho run này.")
 
-def tong_quan():
-    st.title("Tổng quan về tập dữ liệu MNIST")
-
-    st.header("1. Giới thiệu")
-    st.write("Tập dữ liệu MNIST (Modified National Institute of Standards and Technology) là một trong những tập dữ liệu phổ biến nhất trong lĩnh vực Machine Learning và Computer Vision, thường được dùng để huấn luyện và kiểm thử các mô hình phân loại chữ số viết tay.") 
-
-    st.image("https://datasets.activeloop.ai/wp-content/uploads/2019/12/MNIST-handwritten-digits-dataset-visualized-by-Activeloop.webp", use_container_width=True)
-
-    st.subheader("Nội dung")
-    st.write("- 70.000 ảnh grayscale (đen trắng) của các chữ số viết tay từ 0 đến 9.")
-    st.write("- Kích thước ảnh: 28x28 pixel.")
-    st.write("- Định dạng: Mỗi ảnh được biểu diễn bằng một ma trận 28x28 có giá trị pixel từ 0 (đen) đến 255 (trắng).")
-    st.write("- Nhãn: Một số nguyên từ 0 đến 9 tương ứng với chữ số trong ảnh.")
-
-    st.header("2. Nguồn gốc và ý nghĩa")
-    st.write("- Được tạo ra từ bộ dữ liệu chữ số viết tay gốc của NIST, do LeCun, Cortes và Burges chuẩn bị.")
-    st.write("- Dùng làm benchmark cho các thuật toán nhận diện hình ảnh, đặc biệt là mạng nơ-ron nhân tạo (ANN) và mạng nơ-ron tích chập (CNN).")
-    st.write("- Rất hữu ích cho việc kiểm thử mô hình trên dữ liệu hình ảnh thực tế nhưng đơn giản.")
-
-    st.header("3. Phân chia tập dữ liệu")
-    st.write("- Tập huấn luyện: 60.000 ảnh.")
-    st.write("- Tập kiểm thử: 10.000 ảnh.")
-    st.write("- Mỗi tập có phân bố đồng đều về số lượng chữ số từ 0 đến 9.")
-
-    st.header("4. Ứng dụng")
-    st.write("- Huấn luyện và đánh giá các thuật toán nhận diện chữ số viết tay.")
-    st.write("- Kiểm thử và so sánh hiệu suất của các mô hình học sâu (Deep Learning).")
-    st.write("- Làm bài tập thực hành về xử lý ảnh, trích xuất đặc trưng, mô hình phân loại.")
-    st.write("- Cung cấp một baseline đơn giản cho các bài toán liên quan đến Computer Vision.")
-
-    st.header("5. Phương pháp tiếp cận phổ biến")
-    st.write("- Trích xuất đặc trưng truyền thống: PCA, HOG, SIFT...")
-    st.write("- Machine Learning: KNN, SVM, Random Forest, Logistic Regression...")
-    st.write("- Deep Learning: MLP, CNN (LeNet-5, AlexNet, ResNet...), RNN")
-
-    st.caption("Ứng dụng hiển thị thông tin về tập dữ liệu MNIST bằng Streamlit 🚀")
-
+# Hàm tải dữ liệu
 def up_load_db():
     st.header("📥 Tải Dữ Liệu")
     
@@ -226,143 +164,135 @@ def up_load_db():
         if option == "Tải từ OpenML":
             st.markdown("#### 📂 Tải dữ liệu MNIST từ OpenML")
             if st.button("Tải dữ liệu MNIST", key="download_mnist_button"):
-                with st.status("🔄 Đang tải dữ liệu MNIST từ OpenML...", expanded=True) as status:
+                with st.spinner("🔄 Đang tải dữ liệu..."):
                     progress_bar = st.progress(0)
+                    status_text = st.empty()  # Hiển thị phần trăm
                     for percent_complete in range(0, 101, 20):
                         time.sleep(0.5)
                         progress_bar.progress(percent_complete)
-                        status.update(label=f"🔄 Đang tải... ({percent_complete}%)")
-                    
+                        status_text.text(f"🔄 Đang tải... {percent_complete}%")
                     X = np.load("X.npy")
                     y = np.load("y.npy")
-                    
-                    status.update(label="✅ Tải dữ liệu thành công!", state="complete")
-                    
                     st.session_state.data = (X, y)
+                    st.success("✅ **Tải dữ liệu thành công!**")
         
         else:
             st.markdown("#### 📤 Upload dữ liệu của bạn")
             uploaded_file = st.file_uploader("Chọn một file ảnh", type=["png", "jpg", "jpeg"], key="file_upload")
             
             if uploaded_file is not None:
-                with st.status("🔄 Đang xử lý ảnh...", expanded=True) as status:
+                with st.spinner("🔄 Đang xử lý ảnh..."):
                     progress_bar = st.progress(0)
+                    status_text = st.empty()  # Hiển thị phần trăm
                     for percent_complete in range(0, 101, 25):
                         time.sleep(0.3)
                         progress_bar.progress(percent_complete)
-                        status.update(label=f"🔄 Đang xử lý... ({percent_complete}%)")
-                    
+                        status_text.text(f"🔄 Đang xử lý... {percent_complete}%")
                     image = Image.open(uploaded_file).convert('L')
                     st.image(image, caption="Ảnh đã tải lên", use_column_width=True)
                     
                     if image.size != (28, 28):
-                        status.update(label="❌ Ảnh không đúng kích thước 28x28 pixel.", state="error")
+                        st.error("❌ **Ảnh không đúng kích thước 28x28 pixel.**")
                     else:
-                        status.update(label="✅ Ảnh hợp lệ!", state="complete")
                         transform = transforms.Compose([
                             transforms.ToTensor(),
                             transforms.Normalize((0.5,), (0.5,))
                         ])
                         image_tensor = transform(image).unsqueeze(0)
                         st.session_state.data = image_tensor
-    
+                        st.success("✅ **Ảnh hợp lệ!**")
+
     if st.session_state.data is not None:
         st.markdown("#### ✅ Dữ liệu đã sẵn sàng!")
     else:
         st.warning("🔸 Vui lòng tải dữ liệu trước khi tiếp tục làm việc.")
-    
-    st.markdown("""
-    🔹 **Lưu ý:**
-    - Ứng dụng chỉ sử dụng dữ liệu ảnh dạng **28x28 pixel (grayscale)**.
-    - Dữ liệu phải có cột **'label'** chứa nhãn (số từ 0 đến 9) khi tải từ OpenML.
-    - Nếu dữ liệu của bạn không đúng định dạng, vui lòng sử dụng dữ liệu MNIST từ OpenML.
-    """)
 
+# Hàm chia dữ liệu
 def chia_du_lieu():
-    st.markdown(" ### 📌 Chia dữ liệu Train/Test")
+    st.markdown("### 📌 Chia dữ liệu Train/Test")
 
-    # Kiểm tra nếu dữ liệu chưa được tải lên
     if "data" not in st.session_state or st.session_state.data is None:
         st.error("⚠️ Chưa có dữ liệu! Bạn cần tải dữ liệu trước khi thực hiện chia tập Train/Test.")
-        return  # Dừng lại nếu chưa có dữ liệu
+        return
 
-    # Đọc dữ liệu từ session_state
     X, y = st.session_state.data
     total_samples = X.shape[0]
 
-    # Nếu chưa có cờ "data_split_done", đặt mặc định là False
     if "data_split_done" not in st.session_state:
         st.session_state.data_split_done = False  
 
-    # Thanh kéo chọn số lượng ảnh để train
     num_samples = st.slider("📌 Chọn số lượng ảnh để train:", 1000, total_samples, min(10000, total_samples))
-    
-    # Thanh kéo chọn tỷ lệ Train/Test
     test_size = st.slider("📌 Chọn % dữ liệu Test", 10, 50, 20)
     remaining_size = 100 - test_size
     val_size = st.slider("📌 Chọn % dữ liệu Validation (trong phần Train)", 0, 50, 15)
     st.write(f"📌 **Tỷ lệ phân chia:** Test={test_size}%, Validation={val_size}%, Train={remaining_size - val_size}%")
 
-    if st.button("✅ Xác nhận & Lưu") and not st.session_state.data_split_done:
-        st.session_state.data_split_done = True  # Đánh dấu đã chia dữ liệu
-        
-        # Thanh tiến trình
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+    if st.button("✅ Xác nhận & Lưu"):
+        st.session_state.data_split_done = False  
 
-        status_text.text("🔄 Đang chọn dữ liệu (0%)")
+        with st.status("🔄 Đang xử lý dữ liệu...", expanded=True):
+            progress_bar = st.progress(0)
+            status_text = st.empty()  # Hiển thị phần trăm
 
-        # Chọn dữ liệu
-        if num_samples == total_samples:
-            X_selected, y_selected = X, y
-        else:
-            X_selected, _, y_selected, _ = train_test_split(
-                X, y, train_size=num_samples, stratify=y if len(np.unique(y)) > 1 else None, random_state=42
+            # Chọn dữ liệu
+            status_text.text("🔄 Đang chọn dữ liệu... 0%")
+            if num_samples == total_samples:
+                X_selected, y_selected = X, y
+            else:
+                X_selected, _, y_selected, _ = train_test_split(
+                    X, y, train_size=num_samples, stratify=y if len(np.unique(y)) > 1 else None, random_state=42
+                )
+            progress_bar.progress(25)
+            status_text.text("🔄 Đang chọn dữ liệu... 25%")
+
+            # Chia tập Train/Test
+            status_text.text("🔄 Đang chia tập Train/Test... 50%")
+            X_train_full, X_test, y_train_full, y_test = train_test_split(
+                X_selected, y_selected, test_size=test_size/100, stratify=y_selected if len(np.unique(y_selected)) > 1 else None, random_state=42
             )
-        
-        progress_bar.progress(25)
-        status_text.text("🔄 Đang chia tập Train/Test (50%)")
-        
-        X_train_full, X_test, y_train_full, y_test = train_test_split(
-            X_selected, y_selected, test_size=test_size/100, stratify=y_selected if len(np.unique(y_selected)) > 1 else None, random_state=42
-        )
-        progress_bar.progress(50)
+            progress_bar.progress(50)
+            status_text.text("🔄 Đang chia tập Train/Test... 50%")
 
-        status_text.text("🔄 Đang chia tập Train/Validation (75%)")
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train_full, y_train_full, test_size=val_size / (100 - test_size),
-            stratify=y_train_full if len(np.unique(y_train_full)) > 1 else None, random_state=42
-        )
-        progress_bar.progress(75)
+            # Chia tập Train/Validation
+            status_text.text("🔄 Đang chia tập Train/Validation... 75%")
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train_full, y_train_full, test_size=val_size / (100 - test_size),
+                stratify=y_train_full if len(np.unique(y_train_full)) > 1 else None, random_state=42
+            )
+            progress_bar.progress(75)
+            status_text.text("🔄 Đang chia tập Train/Validation... 75%")
 
-        # Lưu dữ liệu vào session_state
-        st.session_state.update({
-            "total_samples": num_samples,
-            "X_train": X_train,
-            "X_val": X_val,
-            "X_test": X_test,
-            "y_train": y_train,
-            "y_val": y_val,
-            "y_test": y_test,
-            "test_size": X_test.shape[0],
-            "val_size": X_val.shape[0],
-            "train_size": X_train.shape[0]
-        })
+            # Lưu dữ liệu vào session_state
+            st.session_state.update({
+                "total_samples": num_samples,
+                "X_train": X_train,
+                "X_val": X_val,
+                "X_test": X_test,
+                "y_train": y_train,
+                "y_val": y_val,
+                "y_test": y_test,
+                "test_size": X_test.shape[0],
+                "val_size": X_val.shape[0],
+                "train_size": X_train.shape[0],
+                "data_split_done": True
+            })
 
-        progress_bar.progress(100)
-        status_text.text("✅ Hoàn thành chia dữ liệu (100%)")
+            progress_bar.progress(100)
+            status_text.text("✅ Hoàn thành chia dữ liệu! 100%")
+            st.success("✅ Dữ liệu đã được chia thành công!")
 
-        # Hiển thị thông tin chia dữ liệu
-        summary_df = pd.DataFrame({
-            "Tập dữ liệu": ["Train", "Validation", "Test"],
-            "Số lượng mẫu": [X_train.shape[0], X_val.shape[0], X_test.shape[0]]
-        })
-        st.success("✅ Dữ liệu đã được chia thành công!")
-        st.table(summary_df)
+            # Hiển thị thông tin chia dữ liệu
+            summary_df = pd.DataFrame({
+                "Tập dữ liệu": ["Train", "Validation", "Test"],
+                "Số lượng mẫu": [X_train.shape[0], X_val.shape[0], X_test.shape[0]]
+            })
+            st.table(summary_df)
 
     elif st.session_state.data_split_done:
         st.info("✅ Dữ liệu đã được chia, không cần chạy lại.")
 
+
+# Định nghĩa mô hình Neural Network
 class NeuralNet(nn.Module):
     def __init__(self, input_size, num_layers, num_nodes, activation):
         super(NeuralNet, self).__init__()
@@ -376,6 +306,7 @@ class NeuralNet(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+# Hàm huấn luyện mô hình
 def train():
     if "mlflow_url" not in st.session_state:
         st.session_state["mlflow_url"] = "https://dagshub.com/Snxtruc/HocMayPython.mlflow"
@@ -386,7 +317,6 @@ def train():
         st.error("⚠️ Chưa có dữ liệu! Hãy chia dữ liệu trước.")
         return
 
-    # Chuyển đổi dữ liệu thành tensor
     X_train = torch.tensor(st.session_state["X_train"].reshape(-1, 28 * 28) / 255.0, dtype=torch.float32)
     X_val = torch.tensor(st.session_state["X_val"].reshape(-1, 28 * 28) / 255.0, dtype=torch.float32) if st.session_state["X_val"].size > 0 else None
     X_test = torch.tensor(st.session_state["X_test"].reshape(-1, 28 * 28) / 255.0, dtype=torch.float32)
@@ -394,12 +324,10 @@ def train():
     y_val = torch.tensor(st.session_state["y_val"], dtype=torch.long) if X_val is not None else None
     y_test = torch.tensor(st.session_state["y_test"], dtype=torch.long)
 
-    # Chia batch để huấn luyện thực tế hơn
     batch_size = 64
     train_dataset = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    # Giao diện tùy chỉnh mô hình
     st.header("⚙️ Chọn mô hình & Huấn luyện")
     num_layers = st.slider("Số lớp ẩn", 1, 5, 2)
     num_nodes = st.slider("Số node mỗi lớp", 32, 256, 128)
@@ -407,12 +335,13 @@ def train():
     optimizer_choice = st.selectbox("Optimizer", ["Adam", "SGD", "RMSprop"])
     learning_rate = st.slider("Learning Rate", 1e-5, 1e-1, 1e-3, format="%.5f")
     epochs = st.slider("Số epoch", 1, 50, 10)
+    num_folds = st.slider("Số fold cho Cross-Validation", 2, 10, 5)
     run_name = st.text_input("🔹 Nhập tên Run:", "Default_Run")
     st.session_state["run_name"] = run_name if run_name else "default_run"
 
     activation_dict = {"ReLU": nn.ReLU, "Sigmoid": nn.Sigmoid, "Tanh": nn.Tanh}
     activation = activation_dict[activation_func]
-    
+
     model = NeuralNet(28 * 28, num_layers, num_nodes, activation)
     criterion = nn.CrossEntropyLoss()
 
@@ -424,6 +353,8 @@ def train():
     optimizer = optimizer_dict[optimizer_choice]
 
     if st.button("🚀 Huấn luyện mô hình"):
+        st.session_state["training_done"] = False
+
         with mlflow.start_run(run_name=f"Train_{st.session_state['run_name']}"):
             mlflow.log_params({
                 "num_layers": num_layers,
@@ -432,75 +363,96 @@ def train():
                 "optimizer": optimizer_choice,
                 "learning_rate": learning_rate,
                 "epochs": epochs,
+                "num_folds": num_folds,
             })
-
-            progress_bar = st.progress(0)
-            status_text = st.empty()
 
             train_losses = []
             val_accuracies = []
 
-            for epoch in range(epochs):
-                model.train()
-                epoch_loss = 0
-                for batch_X, batch_y in train_loader:
-                    optimizer.zero_grad()
-                    outputs = model(batch_X)
-                    loss = criterion(outputs, batch_y)
-                    loss.backward()
-                    optimizer.step()
-                    epoch_loss += loss.item()
+            # Tạo DataFrame để lưu kết quả từng epoch trong từng fold
+            results_df = pd.DataFrame(columns=["Fold", "Epoch", "Loss", "Accuracy"])
 
-                train_losses.append(epoch_loss / len(train_loader))
+            with st.status("🔄 Đang huấn luyện mô hình...", expanded=True):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
 
+                from sklearn.model_selection import KFold
+                kfold = KFold(n_splits=num_folds, shuffle=True, random_state=42)
+
+                for fold, (train_idx, val_idx) in enumerate(kfold.split(X_train)):
+                    st.write(f"### 🛠️ Fold {fold + 1}/{num_folds}")
+
+                    X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+                    y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+
+                    train_dataset_fold = TensorDataset(X_train_fold, y_train_fold)
+                    train_loader_fold = DataLoader(train_dataset_fold, batch_size=batch_size, shuffle=True)
+
+                    for epoch in range(epochs):
+                        model.train()
+                        epoch_loss = 0
+                        for batch_X, batch_y in train_loader_fold:
+                            optimizer.zero_grad()
+                            outputs = model(batch_X)
+                            loss = criterion(outputs, batch_y)
+                            loss.backward()
+                            optimizer.step()
+                            epoch_loss += loss.item()
+
+                        train_losses.append(epoch_loss / len(train_loader_fold))
+
+                        model.eval()
+                        with torch.no_grad():
+                            val_preds = model(X_val_fold).argmax(dim=1)
+                            val_acc = (val_preds == y_val_fold).float().mean().item()
+                            val_accuracies.append(val_acc)
+
+                        progress = int((epoch + 1) / epochs * 100)
+                        progress_bar.progress(progress)
+                        status_text.text(f"🛠️ Fold {fold + 1}/{num_folds} | Epoch {epoch + 1}/{epochs} | {progress}%")
+
+                        # Thêm kết quả vào DataFrame
+                        results_df = pd.concat([
+                            results_df,
+                            pd.DataFrame({
+                                "Fold": [f"Fold {fold + 1}"],
+                                "Epoch": [epoch + 1],
+                                "Loss": [epoch_loss / len(train_loader_fold)],
+                                "Accuracy": [val_acc],
+                            })
+                        ], ignore_index=True)
+
+                # Hiển thị kết quả dưới dạng bảng
+                st.write("### 📊 Kết quả huấn luyện")
+                st.dataframe(results_df, use_container_width=True)
+
+                # Đánh giá tổng thể trên tập validation
+                avg_val_accuracy = np.mean(val_accuracies)
+                st.success(f"📊 **Độ chính xác trung bình trên tập validation**: {avg_val_accuracy:.4f}")
+
+                # Đánh giá mô hình cuối cùng trên tập test
                 model.eval()
                 with torch.no_grad():
-                    val_acc = None
-                    if X_val is not None:
-                        val_preds = model(X_val).argmax(dim=1)
-                        val_acc = (val_preds == y_val).float().mean().item()
-                        val_accuracies.append(val_acc)
+                    test_acc = (model(X_test).argmax(dim=1) == y_test).float().mean().item()
+                st.success(f"📊 **Độ chính xác trên tập test**: {test_acc:.4f}")
 
-                progress = int((epoch + 1) / epochs * 100)
-                progress_bar.progress(progress / 100)
+                # Log kết quả vào MLflow
+                mlflow.log_metrics({
+                    "test_accuracy": test_acc,
+                    "avg_val_accuracy": avg_val_accuracy,
+                    "final_train_loss": train_losses[-1],
+                })
 
-                if val_acc is not None:
-                    status_text.text(f"🛠️ Epoch {epoch + 1}/{epochs} | Loss: {train_losses[-1]:.4f} | Val Acc: {val_acc:.4f} | {progress}%")
-                else:
-                    status_text.text(f"🛠️ Epoch {epoch + 1}/{epochs} | Loss: {train_losses[-1]:.4f} | {progress}%")
-                
-                time.sleep(0.5)
+                # Lưu mô hình
+                save_model(model, num_layers, num_nodes, activation_func)
+                st.session_state["training_done"] = True
+                st.success("✅ Huấn luyện hoàn tất!")
+                st.markdown(f"🔗 [Truy cập MLflow UI]({st.session_state['mlflow_url']})")
 
-            model.eval()
-            with torch.no_grad():
-                train_acc = (model(X_train).argmax(dim=1) == y_train).float().mean().item()
-                test_acc = (model(X_test).argmax(dim=1) == y_test).float().mean().item()
-                val_acc = np.mean(val_accuracies) if val_accuracies else None
-
-            if val_acc is not None:
-                st.success(f"📊 **Độ chính xác trên tập validation**: {val_acc:.4f}")
-                st.success(f"📊 **Độ chính xác trên tập train**: {train_acc:.4f}")
-
-            mlflow.log_metrics({
-                "train_accuracy": train_acc,
-                "test_accuracy": test_acc,
-                "final_train_loss": train_losses[-1],
-            })
-            if val_acc is not None:
-                mlflow.log_metric("val_accuracy", val_acc)
-
-            # 🔥 Gọi hàm lưu model
-            save_model(model, num_layers, num_nodes, activation_func)
-
-            progress_bar.progress(1.0)
-            status_text.text("✅ Huấn luyện hoàn tất!")
-            st.markdown(f"🔗 [Truy cập MLflow UI]({st.session_state['mlflow_url']})")
-
-# ✅ HÀM MỚI: Save Model
+# Hàm lưu mô hình
 def save_model(model, num_layers, num_nodes, activation_func):
     model_name = f"{st.session_state['run_name']}_{num_layers}layers_{num_nodes}nodes_{activation_func}"
     
-    # Tránh trùng tên model
     if "neural_models" not in st.session_state:
         st.session_state["neural_models"] = []
 
@@ -517,32 +469,23 @@ def save_model(model, num_layers, num_nodes, activation_func):
     }, model_path)
     
     st.session_state["neural_models"].append({"name": model_name, "model": model_path})
-    st.session_state["trained_model"] = model  # ✅ Load ngay vào session_state
-    st.success(f"✅ Đã lưu mô hình: `{model_name}`")
+    st.session_state["trained_model"] = model
+    st.success(f"✅ Đã lưu mô hình: {model_name}")
 
-
-
-# Hàm xử lý ảnh
+# Hàm xử lý ảnh từ canvas
 def preprocess_canvas_image(canvas_result):
-    # Kiểm tra nếu canvas trống
     if canvas_result is None or canvas_result.image_data is None:
         return None
 
-    # Chuyển đổi dữ liệu từ canvas thành numpy array
     image_array = np.array(canvas_result.image_data, dtype=np.uint8)
 
-    # Đảm bảo ảnh có đúng 3 kênh (RGB), nếu không, chuyển đổi
-    if image_array.shape[-1] == 4:  # Nếu có kênh Alpha (RGBA), loại bỏ
+    if image_array.shape[-1] == 4:
         image_array = image_array[:, :, :3]
 
-    # Chuyển numpy array thành ảnh PIL
     image_pil = Image.fromarray(image_array)
-
-    # Chuyển sang ảnh xám (grayscale) và resize về 28x28
     image_pil = ImageOps.grayscale(image_pil)  
     image_pil = image_pil.resize((28, 28))  
 
-    # Chuyển đổi ảnh thành tensor để đưa vào model
     transform = transforms.Compose([
         transforms.ToTensor(),  
         transforms.Normalize((0.5,), (0.5,))  
@@ -551,27 +494,23 @@ def preprocess_canvas_image(canvas_result):
     image_tensor = transform(image_pil).view(-1, 28 * 28)  
     return image_tensor
 
-
+# Hàm demo nhận diện chữ số
 def demo():
-    # Giao diện Streamlit
     st.title("📷 Nhận diện chữ số viết tay")
     
-    # 📥 Load mô hình đã huấn luyện
     if "trained_model" in st.session_state:
         model = st.session_state["trained_model"]
         st.success("✅ Đã sử dụng mô hình vừa huấn luyện!")
     else:
         st.error("⚠️ Chưa có mô hình! Hãy huấn luyện trước.")
-        return  # Dừng chương trình nếu chưa có mô hình
+        return
 
-    # 🆕 Cập nhật key cho canvas khi nhấn "Tải lại"
     if "key_value" not in st.session_state:
         st.session_state.key_value = str(random.randint(0, 1000000))  
 
     if st.button("🔄 Tải lại nếu không thấy canvas"):
         st.session_state.key_value = str(random.randint(0, 1000000))  
 
-    # ✍️ Vẽ số
     canvas_result = st_canvas(
         fill_color="black",
         stroke_width=10,
@@ -588,27 +527,24 @@ def demo():
         img = preprocess_canvas_image(canvas_result)
 
         if img is not None:
-            # Hiển thị ảnh đã xử lý
             st.image(Image.fromarray((img.numpy().reshape(28, 28) * 255).astype(np.uint8)), caption="Ảnh sau xử lý", width=100)
 
-            # 🧠 Dự đoán số
-            model.eval()  # Chuyển sang chế độ đánh giá
+            model.eval()
             with torch.no_grad():
-                logits = model(img)  # Đầu ra trước khi áp dụng softmax
-                prediction = logits.argmax(dim=1).item()  # Lấy class có xác suất cao nhất
-                confidence_scores = torch.nn.functional.softmax(logits, dim=1)  # Chuyển thành xác suất
-                max_confidence = confidence_scores.max().item()  # Lấy xác suất cao nhất
+                logits = model(img)
+                prediction = logits.argmax(dim=1).item()
+                confidence_scores = torch.nn.functional.softmax(logits, dim=1)
+                max_confidence = confidence_scores.max().item()
 
-            # 🏆 Hiển thị kết quả
             st.subheader(f"🔢 Dự đoán: {prediction}")
             st.write(f"📊 Mức độ tin cậy: {max_confidence:.2%}")
 
-            # 📊 Hiển thị bảng confidence score
             prob_df = pd.DataFrame(confidence_scores.numpy(), columns=[str(i) for i in range(10)]).T
             prob_df.columns = ["Mức độ tin cậy"]
         else:
             st.error("⚠️ Hãy vẽ một số trước khi bấm Dự đoán!")
 
+# Hàm chính để chạy ứng dụng
 def NeuranNetwork():
     st.markdown(
         """
@@ -647,8 +583,7 @@ def NeuranNetwork():
     "Thông tin huấn luyện",
     "Demo"
     ])
-    with tab1:
-        tong_quan()
+
     with tab2: 
         up_load_db()
     with tab3: 
