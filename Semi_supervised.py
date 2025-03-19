@@ -266,16 +266,15 @@ def up_load_db():
 def chia_du_lieu():
     st.title("📌 Chia dữ liệu Train/Test")
 
-    # Kiểm tra dữ liệu đã có chưa
+    # Kiểm tra dữ liệu đã tải lên
     if "data" not in st.session_state or st.session_state.data is None:
-        st.warning("⚠️ Vui lòng tải dữ liệu trước khi thực hiện chia dữ liệu.")
+        st.warning("🔸 Vui lòng tải dữ liệu trước khi tiếp tục.")
         return
 
-    # Lấy dữ liệu từ session_state
     X, y = st.session_state.data
     total_samples = X.shape[0]
 
-    # Nếu chưa có flag "data_split_done", mặc định là False
+    # Nếu chưa có cờ "data_split_done", đặt mặc định là False
     if "data_split_done" not in st.session_state:
         st.session_state.data_split_done = False  
 
@@ -284,19 +283,14 @@ def chia_du_lieu():
     
     # Thanh kéo chọn tỷ lệ Train/Test
     test_size = st.slider("📌 Chọn % dữ liệu Test", 10, 50, 20)
-    train_size = 100 - test_size
-    st.write(f"📌 **Tỷ lệ phân chia:** Train={train_size}%, Test={test_size}%")
+    remaining_size = 100 - test_size
+    val_size = st.slider("📌 Chọn % dữ liệu Validation (trong phần Train)", 0, 50, 15)
+    st.write(f"📌 **Tỷ lệ phân chia:** Test={test_size}%, Validation={val_size}%, Train={remaining_size - val_size}%")
 
-    # Placeholder cho bảng kết quả và thanh tiến trình
-    progress_bar = st.empty()
+    # Placeholder để hiển thị bảng
     table_placeholder = st.empty()
 
-    # Nút xác nhận chia dữ liệu
-    if st.button("✅ Xác nhận & Lưu", key="luu"):
-        progress_bar.progress(10)  # Bắt đầu tiến trình
-        st.session_state.data_split_done = True  # Đánh dấu đã chia dữ liệu
-        
-        # Chọn số lượng dữ liệu cần lấy
+    def process_split():
         if num_samples == total_samples:
             X_selected, y_selected = X, y
         else:
@@ -304,84 +298,59 @@ def chia_du_lieu():
                 X, y, train_size=num_samples, stratify=y, random_state=42
             )
 
-        progress_bar.progress(40)  # Tiến trình 40%
-
         # Chia train/test
         stratify_option = y_selected if len(np.unique(y_selected)) > 1 else None
-        X_train, X_test, y_train, y_test = train_test_split(
+        X_train_full, X_test, y_train_full, y_test = train_test_split(
             X_selected, y_selected, test_size=test_size/100, stratify=stratify_option, random_state=42
         )
 
-        progress_bar.progress(70)  # Tiến trình 70%
+        # Chia train/val
+        if val_size > 0:
+            stratify_option = y_train_full if len(np.unique(y_train_full)) > 1 else None
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train_full, y_train_full, test_size=val_size / (100 - test_size),
+                stratify=stratify_option, random_state=42
+            )
+        else:
+            X_train, y_train = X_train_full, y_train_full
+            X_val, y_val = np.array([]), np.array([])
 
-        # Lưu vào session_state
-        st.session_state.total_samples = num_samples
-        st.session_state["neural_X_train"] = X_train
-        st.session_state["neural_X_test"] = X_test
-        st.session_state["neural_y_train"] = y_train
-        st.session_state["neural_y_test"] = y_test
-        st.session_state.test_size = X_test.shape[0]
-        st.session_state.train_size = X_train.shape[0]
-
-        progress_bar.progress(90)  # Gần hoàn tất
-
-        # Lưu bảng kết quả
-        st.session_state.summary_df = pd.DataFrame({
-            "Tập dữ liệu": ["Train", "Test"],
-            "Số lượng mẫu": [X_train.shape[0], X_test.shape[0]]
+        # Lưu dữ liệu vào session_state
+        st.session_state.update({
+            "total_samples": num_samples,
+            "neural_X_train": X_train,
+            "neural_X_val": X_val,
+            "neural_X_test": X_test,
+            "neural_y_train": y_train,
+            "neural_y_val": y_val,
+            "neural_y_test": y_test,
+            "test_size": X_test.shape[0],
+            "val_size": X_val.shape[0],
+            "train_size": X_train.shape[0],
+            "summary_df": pd.DataFrame({
+                "Tập dữ liệu": ["Train", "Validation", "Test"],
+                "Số lượng mẫu": [X_train.shape[0], X_val.shape[0], X_test.shape[0]]
+            }),
+            "data_split_done": True
         })
 
+    # Nút xác nhận và lưu dữ liệu lần đầu
+    if st.button("✅ Xác nhận & Lưu", key="luu"):
+        process_split()
         st.success("✅ Dữ liệu đã được chia thành công!")
         table_placeholder.table(st.session_state.summary_df)
-        progress_bar.progress(100)  # Hoàn thành
 
-    # Nếu đã chia dữ liệu trước đó
+    # Nếu dữ liệu đã được chia trước đó
     if st.session_state.data_split_done:
-        if "summary_df" in st.session_state:
-            table_placeholder.table(st.session_state.summary_df)
+        table_placeholder.table(st.session_state.summary_df)
+        st.info("✅ Dữ liệu đã được chia. Nhấn nút dưới đây để chia lại dữ liệu nếu muốn thay đổi.")
         
-        st.info("✅ Dữ liệu đã được chia. Nhấn nút dưới đây để chia lại nếu muốn thay đổi.")
-        
+        # Nút chia lại dữ liệu
         if st.button("🔄 Chia lại dữ liệu", key="chia_lai"):
-            progress_bar.progress(10)  # Bắt đầu lại tiến trình
             table_placeholder.empty()
-
-            if num_samples == total_samples:
-                X_selected, y_selected = X, y
-            else:
-                X_selected, _, y_selected, _ = train_test_split(
-                    X, y, train_size=num_samples, stratify=y, random_state=42
-                )
-
-            progress_bar.progress(40)
-
-            # Chia train/test
-            stratify_option = y_selected if len(np.unique(y_selected)) > 1 else None
-            X_train, X_test, y_train, y_test = train_test_split(
-                X_selected, y_selected, test_size=test_size/100, stratify=stratify_option, random_state=42
-            )
-
-            progress_bar.progress(70)
-
-            # Lưu vào session_state
-            st.session_state.total_samples = num_samples
-            st.session_state["neural_X_train"] = X_train
-            st.session_state["neural_X_test"] = X_test
-            st.session_state["neural_y_train"] = y_train
-            st.session_state["neural_y_test"] = y_test
-            st.session_state.test_size = X_test.shape[0]
-            st.session_state.train_size = X_train.shape[0]
-
-            progress_bar.progress(90)
-
-            # Cập nhật bảng kết quả mới
-            st.session_state.summary_df = pd.DataFrame({
-                "Tập dữ liệu": ["Train", "Test"],
-                "Số lượng mẫu": [X_train.shape[0], X_test.shape[0]]
-            })
+            process_split()
             st.success("✅ Dữ liệu đã được chia lại thành công!")
             table_placeholder.table(st.session_state.summary_df)
-            progress_bar.progress(100)  # Hoàn thành
 
 
 #Callback phuc vu train2
@@ -454,14 +423,8 @@ def train2():
     mask[selected_indices] = False
     X_unlabeled = X_train_full[mask]
     
-    # Chọn chế độ lặp
-    loop_mode = st.selectbox("Chọn chế độ lặp:", ["Số vòng lặp cố định", "Gán hết toàn bộ tập train"], key="pseudo_iteration_mode")
-    
-    if loop_mode == "Số vòng lặp cố định":
-        max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5, key="pseudo_max_iter")
-    else:
-        st.warning("⚠️ Thời gian sẽ lâu do có thể lặp nhiều khi chọn 'Gán hết toàn bộ tập train'!")
-        max_iterations = float('inf')
+    # Chỉ cho phép "Số vòng lặp cố định"
+    max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5, key="pseudo_max_iter")
     
     # Hyperparameters
     num_layers = st.slider("Số lớp ẩn", 1, 5, 2)
@@ -527,6 +490,18 @@ def train2():
             st.write(f"Số mẫu được gán nhãn giả: {X_confident.shape[0]} (ngưỡng: {threshold})")
             st.write(f"Số mẫu chưa gán nhãn còn lại: {X_unlabeled_remaining.shape[0] - X_confident.shape[0]}")
             
+            # Hiển thị hình minh họa các mẫu được gán nhãn giả
+            if len(X_confident) > 0:
+                num_images = min(10, len(X_confident))  # Hiển thị tối đa 10 ảnh
+                fig, axes = plt.subplots(1, num_images, figsize=(num_images, 1.5))
+                for i in range(num_images):
+                    img = X_confident[i].reshape(28, 28).cpu().numpy()
+                    label = y_confident[i].item()
+                    axes[i].imshow(img, cmap="gray")
+                    axes[i].axis("off")
+                    axes[i].set_title(f"{label}")
+                st.pyplot(fig)
+            
             if len(X_confident) == 0:
                 break
             
@@ -539,8 +514,6 @@ def train2():
             status_text.text(f"📈 Đã gán nhãn: {X_labeled.shape[0]}/{total_samples} mẫu ({labeled_fraction:.2%})")
             
             iteration += 1
-            if loop_mode == "Gán hết toàn bộ tập train" and len(X_unlabeled_remaining) == 0:
-                break
         
         torch.save(model.state_dict(), "pseudo_model_final.pth")
         mlflow.log_artifact("pseudo_model_final.pth")
@@ -548,6 +521,7 @@ def train2():
         
         st.success("✅ Quá trình Pseudo Labelling hoàn tất!")
         st.markdown(f"[🔗 Xem MLflow trên DAGsHub]({st.session_state['mlflow_url']})")
+
 
 
 def Semi_supervised():
