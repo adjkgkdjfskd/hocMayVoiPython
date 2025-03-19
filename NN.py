@@ -149,6 +149,44 @@ def display_mlflow_experiments():
     else:
         st.warning("⚠ Không tìm thấy thông tin cho run này.")
 
+def tong_quan(): 
+    st.title("Tổng quan về tập dữ liệu MNIST")
+
+    st.header("1. Giới thiệu")
+    st.write("Tập dữ liệu MNIST (Modified National Institute of Standards and Technology) là một trong những tập dữ liệu phổ biến nhất trong lĩnh vực Machine Learning và Computer Vision, thường được dùng để huấn luyện và kiểm thử các mô hình phân loại chữ số viết tay.") 
+
+    st.image("https://datasets.activeloop.ai/wp-content/uploads/2019/12/MNIST-handwritten-digits-dataset-visualized-by-Activeloop.webp", use_container_width=True)
+
+    st.subheader("Nội dung")
+    st.write("- 70.000 ảnh grayscale (đen trắng) của các chữ số viết tay từ 0 đến 9.")
+    st.write("- Kích thước ảnh: 28x28 pixel.")
+    st.write("- Định dạng: Mỗi ảnh được biểu diễn bằng một ma trận 28x28 có giá trị pixel từ 0 (đen) đến 255 (trắng).")
+    st.write("- Nhãn: Một số nguyên từ 0 đến 9 tương ứng với chữ số trong ảnh.")
+
+    st.header("2. Nguồn gốc và ý nghĩa")
+    st.write("- Được tạo ra từ bộ dữ liệu chữ số viết tay gốc của NIST, do LeCun, Cortes và Burges chuẩn bị.")
+    st.write("- Dùng làm benchmark cho các thuật toán nhận diện hình ảnh, đặc biệt là mạng nơ-ron nhân tạo (ANN) và mạng nơ-ron tích chập (CNN).")
+    st.write("- Rất hữu ích cho việc kiểm thử mô hình trên dữ liệu hình ảnh thực tế nhưng đơn giản.")
+
+    st.header("3. Phân chia tập dữ liệu")
+    st.write("- Tập huấn luyện: 60.000 ảnh.")
+    st.write("- Tập kiểm thử: 10.000 ảnh.")
+    st.write("- Mỗi tập có phân bố đồng đều về số lượng chữ số từ 0 đến 9.")
+
+    st.header("4. Ứng dụng")
+    st.write("- Huấn luyện và đánh giá các thuật toán nhận diện chữ số viết tay.")
+    st.write("- Kiểm thử và so sánh hiệu suất của các mô hình học sâu (Deep Learning).")
+    st.write("- Làm bài tập thực hành về xử lý ảnh, trích xuất đặc trưng, mô hình phân loại.")
+    st.write("- Cung cấp một baseline đơn giản cho các bài toán liên quan đến Computer Vision.")
+
+    st.header("5. Phương pháp tiếp cận phổ biến")
+    st.write("- Trích xuất đặc trưng truyền thống: PCA, HOG, SIFT...")
+    st.write("- Machine Learning: KNN, SVM, Random Forest, Logistic Regression...")
+    st.write("- Deep Learning: MLP, CNN (LeNet-5, AlexNet, ResNet...), RNN")
+
+    st.caption("Ứng dụng hiển thị thông tin về tập dữ liệu MNIST bằng Streamlit 🚀")
+
+
 # Hàm tải dữ liệu
 def up_load_db():
     st.header("📥 Tải Dữ Liệu")
@@ -494,6 +532,15 @@ def preprocess_canvas_image(canvas_result):
     image_tensor = transform(image_pil).view(-1, 28 * 28)  
     return image_tensor
 
+# Hàm tiền xử lý ảnh tải lên
+def preprocess_uploaded_image(uploaded_file):
+    image = Image.open(uploaded_file).convert("L")  # Chuyển sang ảnh xám
+    image = image.resize((28, 28))  # Resize về kích thước 28x28
+    image_array = np.array(image)
+    image_array = image_array.reshape(1, -1)  # Chuyển về vector 1 chiều
+    return image_array
+
+
 # Hàm demo nhận diện chữ số
 def demo():
     st.title("📷 Nhận diện chữ số viết tay")
@@ -527,7 +574,7 @@ def demo():
         update_streamlit=True
     )
 
-    if st.button("Dự đoán số"):
+    if st.button("Dự đoán số từ canvas"):
         img = preprocess_canvas_image(canvas_result)
 
         if img is not None:
@@ -585,6 +632,8 @@ def NeuranNetwork():
     "Demo"
     ])
 
+    with tab1: 
+        tong_quan()
     with tab2: 
         up_load_db()
     with tab3: 
