@@ -9,6 +9,10 @@ import mlflow
 import plotly.express as px
 import shutil
 import time
+from PIL import Image, ImageOps
+import torch.nn.functional as F
+import random
+from streamlit_drawable_canvas import st_canvas
 import torch
 from torchvision import transforms
 from torch.utils.data import TensorDataset, DataLoader
@@ -408,7 +412,7 @@ def train2():
     X_test = torch.tensor(st.session_state["neural_X_test"].reshape(-1, 28 * 28) / 255.0, dtype=torch.float32)
     y_test = torch.tensor(st.session_state["neural_y_test"], dtype=torch.long)
     
-    # Lấy 1% dữ liệu ban đầu
+    # Lấy 1% dữ liệu ban đầu và giữ lại nhãn thật cho phần chưa gán
     X_initial, y_initial = [], []
     for digit in range(10):
         indices = torch.where(y_train_full == digit)[0]
@@ -422,17 +426,16 @@ def train2():
     mask = torch.ones(len(X_train_full), dtype=torch.bool)
     mask[selected_indices] = False
     X_unlabeled = X_train_full[mask]
+    y_unlabeled = y_train_full[mask]  # Lưu nhãn thật cho phần chưa gán
     
-    # Chỉ cho phép "Số vòng lặp cố định"
-    max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5, key="pseudo_max_iter")
-    
-    # Hyperparameters
+    # Cấu hình tham số
+    max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5)
     num_layers = st.slider("Số lớp ẩn", 1, 5, 2)
     num_nodes = st.slider("Số node mỗi lớp", 32, 256, 128)
     activation = st.selectbox("Hàm kích hoạt", ["relu", "sigmoid", "tanh"])
     epochs = st.slider("Số epoch mỗi vòng", 1, 50, 10)
     threshold = st.slider("Ngưỡng gán nhãn", 0.5, 1.0, 0.95, step=0.01)
-    learn_rate = st.number_input("Tốc độ học", min_value=0.0001, max_value=0.1, value=0.001, step=0.0001, format="%.4f")
+    learn_rate = st.number_input("Tốc độ học", 0.0001, 0.1, 0.001, step=0.0001, format="%.4f")
     
     run_name = st.text_input("🔹 Nhập tên Run:", "Pseudo_Default_Run")
     
@@ -442,8 +445,11 @@ def train2():
         optimizer = optim.Adam(model.parameters(), lr=learn_rate)
         criterion = nn.CrossEntropyLoss()
         
+        # Khởi tạo dữ liệu đã gán nhãn và chưa gán nhãn (kèm nhãn thật)
         X_labeled, y_labeled = X_initial.clone(), y_initial.clone()
         X_unlabeled_remaining = X_unlabeled.clone()
+        y_unlabeled_remaining = y_unlabeled.clone()  # Giữ lại nhãn thật để kiểm tra
+        
         total_samples = len(X_train_full)
         
         iteration = 0
@@ -455,6 +461,7 @@ def train2():
             train_dataset = TensorDataset(X_labeled, y_labeled)
             train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
             
+            # Huấn luyện mô hình
             model.train()
             for epoch in range(epochs):
                 status_text.text(f"🚀 Đang train - Epoch {epoch + 1}/{epochs}...")
@@ -465,19 +472,20 @@ def train2():
                     loss = criterion(output, batch_y)
                     loss.backward()
                     optimizer.step()
-                time.sleep(0.5)  # Độ trễ mỗi epoch
+                time.sleep(0.5)
             
+            # Đánh giá trên tập test
             model.eval()
             with torch.no_grad():
                 outputs = model(X_test)
                 test_acc = (outputs.argmax(dim=1) == y_test).float().mean().item()
-            
             st.write(f"📊 Độ chính xác trên tập test: {test_acc:.4f}")
             mlflow.log_metric("pseudo_test_accuracy", test_acc, step=iteration)
             
             if len(X_unlabeled_remaining) == 0:
                 break
             
+            # Dự đoán nhãn giả và tính độ chính xác
             status_text.text("🔍 Đang dự đoán nhãn cho dữ liệu chưa gán...")
             with torch.no_grad():
                 outputs = model(X_unlabeled_remaining)
@@ -485,18 +493,26 @@ def train2():
             
             confident_mask = probs >= threshold
             X_confident = X_unlabeled_remaining[confident_mask]
-            y_confident = predicted_labels[confident_mask]
+            y_confident_pred = predicted_labels[confident_mask]
+            y_confident_true = y_unlabeled_remaining[confident_mask]  # Lấy nhãn thật tương ứng
             
-            st.write(f"Số mẫu được gán nhãn giả: {X_confident.shape[0]} (ngưỡng: {threshold})")
-            st.write(f"Số mẫu chưa gán nhãn còn lại: {X_unlabeled_remaining.shape[0] - X_confident.shape[0]}")
+            # Tính toán độ chính xác nhãn giả
+            correct = (y_confident_pred == y_confident_true).sum().item()
+            total_confident = len(y_confident_pred)
+            pseudo_acc = correct / total_confident if total_confident > 0 else 0.0
             
-            # Hiển thị hình minh họa các mẫu được gán nhãn giả
+            st.write(f"""
+            - Độ chính xác nhãn giả: **{pseudo_acc:.2%}**
+            - Số mẫu chưa gán còn lại: **{X_unlabeled_remaining.shape[0] - X_confident.shape[0]}**
+            """)
+            
+            # Hiển thị ví dụ
             if len(X_confident) > 0:
-                num_images = min(10, len(X_confident))  # Hiển thị tối đa 10 ảnh
+                num_images = min(10, len(X_confident))
                 fig, axes = plt.subplots(1, num_images, figsize=(num_images, 1.5))
                 for i in range(num_images):
                     img = X_confident[i].reshape(28, 28).cpu().numpy()
-                    label = y_confident[i].item()
+                    label = y_confident_pred[i].item()
                     axes[i].imshow(img, cmap="gray")
                     axes[i].axis("off")
                     axes[i].set_title(f"{label}")
@@ -505,23 +521,125 @@ def train2():
             if len(X_confident) == 0:
                 break
             
+            # Cập nhật dữ liệu đã gán nhãn
             X_labeled = torch.cat([X_labeled, X_confident])
-            y_labeled = torch.cat([y_labeled, y_confident])
-            X_unlabeled_remaining = X_unlabeled_remaining[~confident_mask]
+            y_labeled = torch.cat([y_labeled, y_confident_pred])
             
+            # Cập nhật dữ liệu chưa gán nhãn còn lại
+            X_unlabeled_remaining = X_unlabeled_remaining[~confident_mask]
+            y_unlabeled_remaining = y_unlabeled_remaining[~confident_mask]  # Giữ sync dữ liệu
+            
+            # Cập nhật tiến trình
             labeled_fraction = X_labeled.shape[0] / total_samples
             progress_bar.progress(min(int(50 + 50 * labeled_fraction), 100))
             status_text.text(f"📈 Đã gán nhãn: {X_labeled.shape[0]}/{total_samples} mẫu ({labeled_fraction:.2%})")
             
             iteration += 1
         
-        torch.save(model.state_dict(), "pseudo_model_final.pth")
-        mlflow.log_artifact("pseudo_model_final.pth")
+        # Lưu model và kết thúc
+        torch.save({
+            "model_state": model.state_dict(),  
+            "num_layers": num_layers,
+            "num_nodes": num_nodes,
+            "activation": activation
+        }, "model.pth")
+
+        mlflow.log_artifact("model.pth")
         mlflow.end_run()
         
         st.success("✅ Quá trình Pseudo Labelling hoàn tất!")
+        st.download_button("📥 Tải mô hình", open("model.pth", "rb"), file_name="model.pth")
         st.markdown(f"[🔗 Xem MLflow trên DAGsHub]({st.session_state['mlflow_url']})")
 
+# Hàm tải mô hình
+def load_model(model_path="model.pth"):
+    # Load state_dict đã lưu
+    checkpoint = torch.load("model.pth", map_location=torch.device("cpu"))
+
+    # Khởi tạo model với đúng tham số
+    model = NeuralNet(28*28, checkpoint["num_layers"], checkpoint["num_nodes"], checkpoint["activation"])
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+
+# Hàm tiền xử lý ảnh từ file tải lên
+def preprocess_uploaded_image(uploaded_file):
+    image = Image.open(uploaded_file).convert("L")  # Chuyển thành ảnh xám
+    image = image.resize((28, 28))  # Resize về 28x28
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    image_tensor = transform(image).view(-1, 28 * 28)  
+    return image_tensor
+
+
+# Hàm tiền xử lý ảnh từ canvas
+def preprocess_canvas_image(canvas_result):
+    if canvas_result is None or canvas_result.image_data is None:
+        return None
+    image_array = np.array(canvas_result.image_data, dtype=np.uint8)
+    if image_array.shape[-1] == 4:
+        image_array = image_array[:, :, :3]  # Bỏ kênh Alpha nếu có
+    image_pil = Image.fromarray(image_array)
+    image_pil = ImageOps.grayscale(image_pil)  
+    image_pil = image_pil.resize((28, 28))  
+    transform = transforms.Compose([
+        transforms.ToTensor(),  
+        transforms.Normalize((0.5,), (0.5,))  
+    ])
+    image_tensor = transform(image_pil).view(-1, 28 * 28)  
+    return image_tensor
+
+
+# Hàm dự đoán số từ ảnh
+def predict_number(image_tensor, model):
+    with torch.no_grad():
+        logits = model(image_tensor)
+        prediction = logits.argmax(dim=1).item()
+        confidence_scores = F.softmax(logits, dim=1)
+        max_confidence = confidence_scores.max().item()
+    return prediction, max_confidence 
+
+
+
+def demo(): 
+    st.title("🖼️ Nhận diện chữ số viết tay với PyTorch")
+
+    # Tải mô hình
+    try:
+        model = load_model("model.pth")
+        st.success("✅ Mô hình đã tải thành công!")
+    except:
+        st.error("⚠️ Không tìm thấy mô hình. Vui lòng huấn luyện trước!")
+        return
+    
+    # Chọn cách nhập dữ liệu
+    option = st.radio("Chọn phương thức nhập ảnh:", ["Vẽ trên canvas", "Tải lên ảnh"])
+
+    if option == "Vẽ trên canvas":
+        st.write("🎨 Vẽ một chữ số từ 0 đến 9 trong khung dưới đây:")
+        canvas_result = st_canvas(
+            fill_color="black",
+            stroke_width=10,
+            stroke_color="white",
+            background_color="black",
+            height=150,
+            width=150,
+            drawing_mode="freedraw",
+            key=str(random.randint(0, 1000000)),  # Tránh lỗi cache canvas
+            update_streamlit=True
+        )
+
+        if st.button("📊 Dự đoán số từ canvas"):
+            img = preprocess_canvas_image(canvas_result)
+            if img is not None:
+                prediction, confidence = predict_number(img, model)
+                st.image(Image.fromarray((img.numpy().reshape(28, 28) * 255).astype(np.uint8)), caption="Ảnh sau xử lý", width=100)
+                st.subheader(f"🔢 Dự đoán: {prediction}")
+                st.write(f"📊 Mức độ tin cậy: {confidence:.2%}")
+            else:
+                st.error("⚠️ Hãy vẽ một số trước khi bấm Dự đoán!")
 
 
 def Semi_supervised():
@@ -554,12 +672,13 @@ def Semi_supervised():
         unsafe_allow_html=True
     ) 
     st.markdown(" ### 🖊️ MNIST NN & Semi-supervised App")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
     ["Tổng quan", 
     "Tải dữ liệu",
     "Chia dữ liệu",
     "Huấn luyện", 
-    "Thông tin huấn luyện"])
+    "Thông tin huấn luyện",
+    "Demo"])
 
     with tab1: 
         tong_quan()
@@ -571,6 +690,8 @@ def Semi_supervised():
         train2()
     with tab5:
         display_mlflow_experiments()
+    with tab6:
+        demo() 
         
 def run():
     Semi_supervised() 
