@@ -54,7 +54,7 @@ def display_mlflow_experiments():
 
     mlflow_input()
 
-    experiment_name = "Neural Network"
+    experiment_name = "Semi-supervised"
     experiments = mlflow.search_experiments()
     selected_experiment = next((exp for exp in experiments if exp.name == experiment_name), None)
 
