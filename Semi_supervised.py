@@ -402,7 +402,8 @@ class NeuralNet(nn.Module):
 
 def train2():
     st.header("⚙️ Pseudo Labelling với Neural Network (PyTorch)")
-    
+
+    mlflow_input()
     if "neural_X_train" not in st.session_state or "neural_X_test" not in st.session_state:
         st.error("⚠️ Chưa có dữ liệu! Hãy chia dữ liệu trước.")
         return
